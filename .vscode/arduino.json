@@ -1,0 +1,16 @@
+{
+  "configuration": "",
+  "board": "",
+  "programmer": "esptool",
+  "sketch": "Code/doorDetector/doorDetector.ino",
+  "port": "/dev/cu.Bluetooth-Incoming-Port",
+  "monitorPortSettings": {
+    "port": "/dev/tty.usbmodem101",
+    "baudRate": 115200,
+    "lineEnding": "\r\n",
+    "dataBits": 8,
+    "parity": "none",
+    "stopBits": "one"
+  },
+  "optimize_for_debug": false
+}
