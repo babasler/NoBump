@@ -7,6 +7,7 @@
 
 #define DOOR_OPEN "OPEN"
 #define DOOR_CLOSED "CLOSED"
+#define DISTANCE_THREASH 4
 
 // The remote service we wish to connect to.
 static BLEUUID serviceUUID("4fafc201-1fb5-459e-8fcc-c5c9c331914b");
@@ -14,6 +15,10 @@ static BLEUUID serviceUUID("4fafc201-1fb5-459e-8fcc-c5c9c331914b");
 static BLEUUID charUUID("beb5483e-36e1-4688-b7f5-ea07361b26a8");
 
 NewPing sonar(TRIG_PIN,ECHO_PIN,MAX_DISTANCE);
+
+static String currentDoorState = "";
+static String doorState = "";
+uint32_t distance = 0;
 
 static boolean doConnect = false;
 static boolean connected = false;
@@ -110,6 +115,28 @@ class AdvertisedDeviceCallbacks : public BLEAdvertisedDeviceCallbacks {
   } 
 }; 
 
+String getStateFromDistance(uint32_t distance){
+  if(distance <= DISTANCE_THREASH){
+    return DOOR_OPEN;
+  }
+  else if(distance > DISTANCE_THREASH){
+    return DOOR_CLOSED;
+  }
+}
+
+void updateCharacteristicIfNessecary(String doorState){
+  if(currentDoorState == doorState)
+  {
+    return;
+  }
+  else{
+    currentDoorState = doorState;
+    pRemoteCharacteristic->writeValue(doorState.c_str(), doorState.length());
+    Serial.println("Update Characterisitc. New Value: %s", currentDoorState);
+
+  }
+}
+
 void setup() {
   Serial.begin(115200);
   Serial.println("Starting Arduino BLE Client application...");
@@ -137,11 +164,10 @@ void loop() {
   }
 
   if (connected) {
-    String newValue = "Time since boot: " + String(millis() / 1000);
-    Serial.println("Setting new characteristic value to \"" + newValue + "\"");
-
-    // Set the characteristic's value to be the array of bytes that is actually a string.
-    pRemoteCharacteristic->writeValue(newValue.c_str(), newValue.length());
+    distance = sonar.ping_cm();
+    doorState = getStateFromDistance(distance);
+    updateCharacteristicIfNessecary(doorState);
+    
   } else if (doScan) {
     BLEDevice::getScan()->start(0);  // this is just example to start scan after disconnect, most likely there is better way to do it in arduino
   }
