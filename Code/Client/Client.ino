@@ -1,17 +1,19 @@
-/**
- * A BLE client example that is rich in capabilities.
- * There is a lot new capabilities implemented.
- * author unknown
- * updated by chegewara
- */
-
 #include "BLEDevice.h"
-//#include "BLEScan.h"
+#include <NewPing.h>
+
+#define TRIG_PIN 8
+#define ECHO_PIN 7
+#define MAX_DISTANCE 200
+
+#define DOOR_OPEN "OPEN"
+#define DOOR_CLOSED "CLOSED"
 
 // The remote service we wish to connect to.
 static BLEUUID serviceUUID("4fafc201-1fb5-459e-8fcc-c5c9c331914b");
 // The characteristic of the remote service we are interested in.
 static BLEUUID charUUID("beb5483e-36e1-4688-b7f5-ea07361b26a8");
+
+NewPing sonar(TRIG_PIN,ECHO_PIN,MAX_DISTANCE);
 
 static boolean doConnect = false;
 static boolean connected = false;
@@ -49,9 +51,9 @@ bool connectToServer() {
   pClient->setClientCallbacks(new MyClientCallback());
 
   // Connect to the remove BLE Server.
-  pClient->connect(myDevice);  // if you pass BLEAdvertisedDevice instead of address, it will be recognized type of peer device address (public or private)
+  pClient->connect(myDevice);
   Serial.println(" - Connected to server");
-  pClient->setMTU(517);  //set client to request maximum MTU from server (default is 23 otherwise)
+  pClient->setMTU(517); 
 
   // Obtain a reference to the service we are after in the remote BLE server.
   BLERemoteService *pRemoteService = pClient->getService(serviceUUID);
@@ -81,7 +83,6 @@ bool connectToServer() {
   }
 
   if (pRemoteCharacteristic->canNotify()) {
-    // Register/Subscribe for notifications
     pRemoteCharacteristic->registerForNotify(notifyCallback);
   }
 
@@ -90,11 +91,9 @@ bool connectToServer() {
 }
 /**
  * Scan for BLE servers and find the first one that advertises the service we are looking for.
+ * Called
  */
-class MyAdvertisedDeviceCallbacks : public BLEAdvertisedDeviceCallbacks {
-  /**
-   * Called for each advertising BLE server.
-   */
+class AdvertisedDeviceCallbacks : public BLEAdvertisedDeviceCallbacks {
   void onResult(BLEAdvertisedDevice advertisedDevice) {
     Serial.print("BLE Advertised Device found: ");
     Serial.println(advertisedDevice.toString().c_str());
@@ -108,8 +107,8 @@ class MyAdvertisedDeviceCallbacks : public BLEAdvertisedDeviceCallbacks {
       doScan = true;
 
     }  // Found our server
-  }  // onResult
-};  // MyAdvertisedDeviceCallbacks
+  } 
+}; 
 
 void setup() {
   Serial.begin(115200);
@@ -120,20 +119,15 @@ void setup() {
   // have detected a new device.  Specify that we want active scanning and start the
   // scan to run for 5 seconds.
   BLEScan *pBLEScan = BLEDevice::getScan();
-  pBLEScan->setAdvertisedDeviceCallbacks(new MyAdvertisedDeviceCallbacks());
+  pBLEScan->setAdvertisedDeviceCallbacks(new AdvertisedDeviceCallbacks());
   pBLEScan->setInterval(1349);
   pBLEScan->setWindow(449);
   pBLEScan->setActiveScan(true);
   pBLEScan->start(5, false);
 }  // End of setup.
 
-// This is the Arduino main loop function.
 void loop() {
-
-  // If the flag "doConnect" is true then we have scanned for and found the desired
-  // BLE Server with which we wish to connect.  Now we connect to it.  Once we are
-  // connected we set the connected flag to be true.
-  if (doConnect == true) {
+  if (doConnect) {
     if (connectToServer()) {
       Serial.println("We are now connected to the BLE Server.");
     } else {
@@ -142,8 +136,6 @@ void loop() {
     doConnect = false;
   }
 
-  // If we are connected to a peer BLE Server, update the characteristic each time we are reached
-  // with the current time since boot.
   if (connected) {
     String newValue = "Time since boot: " + String(millis() / 1000);
     Serial.println("Setting new characteristic value to \"" + newValue + "\"");
@@ -154,5 +146,5 @@ void loop() {
     BLEDevice::getScan()->start(0);  // this is just example to start scan after disconnect, most likely there is better way to do it in arduino
   }
 
-  delay(1000);  // Delay a second between loops.
-}  // End of loop
+  delay(1000);
+}  
