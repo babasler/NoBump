@@ -67,6 +67,12 @@ void loop() {
   //Distanz messen
   uint32_t distance = sonar.ping_cm();
 
+  if(distance == 0){
+    Serial.println("Fehler bei der Distanzmessung");
+    delay(1000);
+    return;
+  }
+
   //nur wenn sich der zustand geändert hat, nachricht verpacken und senden
   DoorState newState = getStateFromDistance(distance);
   if(newState == currentState){
@@ -102,7 +108,7 @@ DoorState getStateFromDistance(uint32_t distance){
     return DoorState::CLOSED;
   }
   else{
-    return DoorState::ERROR;
+    return DoorState::OPEN; //default fallback
   }
 }
 
