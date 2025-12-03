@@ -1,8 +1,6 @@
-//Pins: GPIO 0,1,2,17
-// Bei LED: Langes Bein (+) geht an ESP, kurzes Bein (-) an GND 
-// ESP => 220 Ohm => Langes Bein (+) LED Kurzes Bein(-) => GND
 #include <esp_now.h>
 #include <WiFi.h>
+#include <PubSubClient.h>
 
 #define D1 1
 #define D2 2
@@ -27,13 +25,20 @@ command_message message;
 const float minVoltage = 3.0;
 const float maxVoltage = 4.0;
 
+// WLAN und MQTT 
+const char* ssid = "DEIN_WIFI";
+const char* password = "DEIN_PASS";
+const char* mqtt_server = "test.mosquitto.org";
+const int   mqtt_port = 1883;
+const char* mqtt_topic = "esp32c6/battery";
+WiFiClient espClient;
+PubSubClient client(espClient)
 
 // Callback, der ausgelöst wird, wenn Daten empfangen werden
 void OnDataRecv(const esp_now_recv_info_t *info, const uint8_t *data, int len){
   memcpy(&message, data, sizeof(message));
-  uint8_t percentage;
-  float vBat;
-
+  
+  #ifdef DEBUG
   Serial.print("Daten empfangen von: ");
   Serial.print("Sender MAC: ");
     for (int i = 0; i < 6; i++) {
@@ -42,14 +47,53 @@ void OnDataRecv(const esp_now_recv_info_t *info, const uint8_t *data, int len){
     }
 
   Serial.print("Doorstate: "); Serial.println(message.state == DoorState::OPEN ? "OPEN" : (message.state == DoorState::CLOSED ? "CLOSED" : "ERROR"));
+  #endif
 
   toggleLEDsFromDoorState(message.state);
 
-  vBat = getVbatt();
-  percentage = mapFloat(vBat, minVoltage, maxVoltage);
-  Serial.printf("Battery: %.2fV (%d%%)\n", vBat, percentage);
-  //hier dann mqtt publishen
   
+  
+}
+
+// ---------- MQTT Senden ----------
+void mqttPublishBattery() {
+
+    // 1. Akku messen (Beispiel: ADC-Pin)
+    uint8_t percentage;
+    float vBat;
+    vBat = getVbatt();
+    percentage = mapFloat(vBat, minVoltage, maxVoltage);
+    #ifdef DEBUG
+    Serial.printf("Battery: %.2fV (%d%%)\n", vBat, percentage);
+    #endif
+
+
+    // 2. WLAN aktivieren
+    WiFi.mode(WIFI_STA);
+    WiFi.begin(ssid, password);
+    while (WiFi.status() != WL_CONNECTED) {
+        delay(10);
+    }
+
+    // 3. MQTT verbinden
+    client.setServer(mqtt_server, mqtt_port);
+    if (client.connect("ESP32C6_Batt_Client")) {
+        char payload[32];
+        
+        client.publish(mqtt_topic, payload);
+        #ifdef DEBUG
+        Serial.printf("MQTT gesendet: %s\n", payload);
+        #endif
+    }
+
+    client.disconnect();
+
+    // 4. WLAN ausschalten → wieder ESP-NOW only
+    WiFi.disconnect(true);
+    WiFi.mode(WIFI_OFF);
+
+    // 5. ESP-NOW wieder aktivieren
+    setupEspNow();
 }
 
 float getVbatt() {
@@ -91,8 +135,10 @@ void setup() {
 
   // WLAN im STA-Modus (Station) starten
   WiFi.mode(WIFI_STA);
+  #ifdef DEBUG
   Serial.println("ESPNow Empfänger gestartet.");
   Serial.print("WiFi MAC: ");
+  #endif
   Serial.println(WiFi.macAddress());
 
   // ESP-NOW initialisieren
@@ -107,7 +153,7 @@ void setup() {
   pinMode(D2, OUTPUT);
   pinMode(D7, OUTPUT);
 
-  // Configure A0 as ADC input for reading battery voltage
+  // Pin für Spannungsmessung als Input setzen
   pinMode(A0, INPUT);
 
   // Callback registrieren
