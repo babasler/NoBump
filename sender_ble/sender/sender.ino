@@ -1,21 +1,25 @@
 #include <NewPing.h>
 #include <stdbool.h>
-#include <BLEDevice.h>
-#include <BLEUtils.h>
-#include <BLEAdvertising.h>
+#include <NimBLEDevice.h>
 
 #define TRIG_PIN 19
 #define ECHO_PIN 17
 #define MAX_DISTANCE 200
 #define DOOR_CLOSED_THREASH 4
+#define DEBUG
 
 
 NewPing sonar(TRIG_PIN, ECHO_PIN, MAX_DISTANCE);
-// MAC-Adresse des Empfängers (anpassen!)
-uint8_t receiverMac[] = {0x10, 0x51, 0xDB, 0x1A, 0xE6, 0xC8};
 
-// BLE advertising helper
-BLEAdvertising *pAdvertising = nullptr;
+// BLE advertising helper (NimBLE)
+NimBLEAdvertising *pAdvertising = nullptr;
+NimBLEServer *pServer = nullptr;
+NimBLEService *pService = nullptr;
+NimBLECharacteristic *pCharDoor = nullptr;
+
+// GATT UUIDs (beliebig, aber stabil halten)
+static const char *SERVICE_UUID = "6e400001-b5a3-f393-e0a9-e50e24dcca9e";
+static const char *CHAR_DOOR_UUID = "6e400002-b5a3-f393-e0a9-e50e24dcca9e"; // Notify
 
 enum class DoorState{
   OPEN,
@@ -38,9 +42,20 @@ DoorState currentState;
 void setup() {
   Serial.begin(115200);
   Serial.println("Sender gestartet");
-  // BLE initialisieren
-  BLEDevice::init("NoBumpSender");
-  pAdvertising = BLEDevice::getAdvertising();
+  // BLE initialisieren (NimBLE)
+  NimBLEDevice::init("NoBumpSender");
+  // GATT Server + Service + Characteristic (Notify)
+  pServer = NimBLEDevice::createServer();
+  pService = pServer->createService(SERVICE_UUID);
+  pCharDoor = pService->createCharacteristic(CHAR_DOOR_UUID, NIMBLE_PROPERTY::NOTIFY | NIMBLE_PROPERTY::READ);
+  pCharDoor->setValue((uint8_t)0); // initialer Zustand
+  pService->start();
+
+  // Advertising mit Service UUID, damit der Client uns findet
+  pAdvertising = NimBLEDevice::getAdvertising();
+  pAdvertising->addServiceUUID(SERVICE_UUID);
+  // NimBLEAdvertising hat kein setScanResponse(bool); optional könnten wir Scan-Response-Daten setzen.
+  pAdvertising->start();
   Serial.println("BLE Advertiser initialisiert.");
 }
 
@@ -49,7 +64,9 @@ void loop() {
   uint32_t distance = sonar.ping_cm();
 
   if(distance == 0){
+    #ifdef DEBUG
     Serial.println("Fehler bei der Distanzmessung");
+    #endif
     delay(1000);
     return;
   }
@@ -57,7 +74,9 @@ void loop() {
   //nur wenn sich der zustand geändert hat, nachricht verpacken und senden
   DoorState newState = getStateFromDistance(distance);
   if(newState == currentState){
+    #ifdef DEBUG
     Serial.println("Zustand unverändert, sende keine Nachricht.");
+    #endif
     delay(1000);
     return;
   }
@@ -66,21 +85,15 @@ void loop() {
 
   //auf Doorstate prüfen und in Nachricht verpacken
   message.state = currentState;
-
+  #ifdef DEBUG
   Serial.print("Gemessene Distanz: "); Serial.print(distance); Serial.print(" cm, neuer Zustand: ");
   Serial.println(currentState == DoorState::OPEN ? "OPEN" : (currentState == DoorState::CLOSED ? "CLOSED" : "ERROR"));
-  // Daten senden via BLE Advertising: wir packen ein Byte in Manufacturer Data
+  #endif
+  // Notify den neuen Zustand über GATT Characteristic
   uint8_t stateByte = message.state == DoorState::OPEN ? 2 : (message.state == DoorState::CLOSED ? 1 : 0);
-  BLEAdvertisementData advData;
-  std::string mdata(1, (char)stateByte);
-  advData.setManufacturerData(mdata);
-  pAdvertising->setAdvertisementData(advData);
-  pAdvertising->start();
-  Serial.println("BLE Advertising gestartet");
-  // kurz werben, dann stoppen (verringert Dauerverbrauch)
-  delay(1000);
-  pAdvertising->stop();
-  Serial.println("BLE Advertising gestoppt");
+  pCharDoor->setValue(&stateByte, 1);
+  pCharDoor->notify(true);
+  Serial.println("BLE GATT Notify gesendet");
 
   delay(2000);  // alle 2 Sekunden prüfen
 }

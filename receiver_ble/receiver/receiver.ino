@@ -1,7 +1,8 @@
 #include <WiFi.h>
-#include <BLEDevice.h>
-#include <BLEScan.h>
-#include <BLEAdvertisedDevice.h>
+#include <NimBLEDevice.h>
+#include <NimBLEScan.h>
+#include <NimBLEClient.h>
+#include <NimBLEAdvertisedDevice.h>
 #include <PubSubClient.h>
 #include <ArduinoJson.h>
 #include "secret.h"
@@ -73,25 +74,69 @@ void connectMQTT()
   }
 }
 
-// BLE Advertised device callback: liest Manufacturer Data (1 Byte) und verarbeitet DoorState
-class MyAdvertisedDeviceCallbacks : public BLEAdvertisedDeviceCallbacks {
-  void onResult(BLEAdvertisedDevice advertisedDevice) {
-    std::string md = advertisedDevice.getManufacturerData();
-    if (md.length() < 1) return;
-    uint8_t stateByte = (uint8_t)md[0];
-    DoorState receivedState = DoorState::ERROR;
-    if (stateByte == 1) receivedState = DoorState::CLOSED;
-    else if (stateByte == 2) receivedState = DoorState::OPEN;
+// GATT UUIDs müssen zur Sender-Seite passen
+static const char *SERVICE_UUID = "6e400001-b5a3-f393-e0a9-e50e24dcca9e";
+static const char *CHAR_DOOR_UUID = "6e400002-b5a3-f393-e0a9-e50e24dcca9e";
+
+NimBLEScan *pBLEScan = nullptr;
+NimBLEClient *pClient = nullptr;
+NimBLERemoteService *pRemoteService = nullptr;
+NimBLERemoteCharacteristic *pRemoteCharDoor = nullptr;
+
+// Notification-Callback vom GATT-Server (Sender)
+void onDoorNotify(NimBLERemoteCharacteristic* chr, uint8_t* data, size_t length, bool isNotify) {
+  if (length < 1) return;
+  uint8_t stateByte = data[0];
+  DoorState receivedState = DoorState::ERROR;
+  if (stateByte == 1) receivedState = DoorState::CLOSED;
+  else if (stateByte == 2) receivedState = DoorState::OPEN;
 
 #ifdef DEBUG
-    Serial.print("BLE Advertisement empfangen von: ");
-    Serial.print(advertisedDevice.getAddress().toString().c_str());
-    Serial.print(" Doorstate: ");
-    Serial.println(receivedState == DoorState::OPEN ? "OPEN" : (receivedState == DoorState::CLOSED ? "CLOSED" : "ERROR"));
+  Serial.print("GATT Notify: DoorState = ");
+  Serial.println(receivedState == DoorState::OPEN ? "OPEN" : (receivedState == DoorState::CLOSED ? "CLOSED" : "ERROR"));
 #endif
 
-    toggleLEDsFromDoorState(receivedState);
-    mqttPublishBattery();
+  toggleLEDsFromDoorState(receivedState);
+  mqttPublishBattery();
+}
+
+// Scan-Callback: bei Gerät mit Service-UUID verbinden
+class MyScanCallbacks : public NimBLEScanCallbacks {
+  void onResult(NimBLEAdvertisedDevice* advertisedDevice) {
+#ifdef DEBUG
+    Serial.print("Gefunden: "); Serial.println(advertisedDevice->getAddress().toString().c_str());
+#endif
+    if (!advertisedDevice->haveServiceUUID() || !advertisedDevice->isAdvertisingService(NimBLEUUID(SERVICE_UUID))) return;
+
+    pBLEScan->stop();
+    NimBLEAddress addr = advertisedDevice->getAddress();
+    pClient = NimBLEDevice::createClient();
+#ifdef DEBUG
+    Serial.print("Verbinde zu "); Serial.println(addr.toString().c_str());
+#endif
+    if (!pClient->connect(addr)) {
+      Serial.println("Verbindung fehlgeschlagen");
+      pBLEScan->start(10, true);
+      return;
+    }
+    pRemoteService = pClient->getService(SERVICE_UUID);
+    if (!pRemoteService) {
+      Serial.println("Service nicht gefunden");
+      pClient->disconnect();
+      pBLEScan->start(10, true);
+      return;
+    }
+    pRemoteCharDoor = pRemoteService->getCharacteristic(CHAR_DOOR_UUID);
+    if (!pRemoteCharDoor) {
+      Serial.println("Characteristic nicht gefunden");
+      pClient->disconnect();
+      pBLEScan->start(10, true);
+      return;
+    }
+    if (pRemoteCharDoor->canNotify()) {
+      pRemoteCharDoor->subscribe(true, onDoorNotify);
+      Serial.println("Notify abonniert");
+    }
   }
 };
 
@@ -203,44 +248,17 @@ void toggleLEDsFromDoorState(DoorState state)
   }
 }
 
-void scanNetworks()
-{
-  Serial.println("Netzwerkscan gestartet...");
-  int n = WiFi.scanNetworks();
-  Serial.println("Scan abgeschlossen.");
-  if (n == 0)
-  {
-    Serial.println("Keine Netzwerke gefunden.");
-  }
-  else
-  {
-    Serial.print(n);
-    Serial.println(" Netzwerke gefunden:");
-    for (int i = 0; i < n; ++i)
-    {
-      Serial.print(i + 1);
-      Serial.print(": ");
-      Serial.print(WiFi.SSID(i));
-      Serial.print(" (");
-      Serial.print(WiFi.RSSI(i));
-      Serial.print(" dBm) ");
-      Serial.print((WiFi.encryptionType(i) == WIFI_AUTH_OPEN) ? "Offen" : "Verschlüsselt");
-      Serial.println();
-    }
-  }
-}
-
 void setup()
 {
   Serial.begin(115200);
 
-  // BLE Scanner initialisieren
-  Serial.println("Initialisiere BLE Scanner...");
-  BLEDevice::init("NoBumpReceiver");
-  BLEScan *pBLEScan = BLEDevice::getScan();
-  pBLEScan->setAdvertisedDeviceCallbacks(new MyAdvertisedDeviceCallbacks());
-  pBLEScan->setActiveScan(true); // aktive Scan-Anfragen
-  pBLEScan->start(0, nullptr, false); // kontinuierlich, Callback-basiert
+  // BLE initialisieren
+  Serial.println("Initialisiere BLE Client...");
+  NimBLEDevice::init("NoBumpReceiver");
+  pBLEScan = NimBLEDevice::getScan();
+  pBLEScan->setScanCallbacks(new MyScanCallbacks());
+  pBLEScan->setActiveScan(true); // aktives Scannen für schnellere Verbindung
+  pBLEScan->start(10, true); // 10s, weiterlaufen
 
   // Pins der LEDs als Output setzen
   pinMode(D8, OUTPUT);
