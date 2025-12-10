@@ -141,22 +141,22 @@ bool connectToServer() {
     }
 
         if (pChr) {
-        if (pChr->canRead()) {
-            Serial.printf("%s Value: %s\n", pChr->getUUID().toString().c_str(), pChr->readValue().c_str());
-        }
+        // if (pChr->canRead()) {
+        //     Serial.printf("%s Value: %s\n", pChr->getUUID().toString().c_str(), pChr->readValue().c_str());
+        // }
 
-        if (pChr->canWrite()) {
-            if (pChr->writeValue("Tasty")) {
-                Serial.printf("Wrote new value to: %s\n", pChr->getUUID().toString().c_str());
-            } else {
-                pClient->disconnect();
-                return false;
-            }
+        // if (pChr->canWrite()) {
+        //     if (pChr->writeValue("Tasty")) {
+        //         Serial.printf("Wrote new value to: %s\n", pChr->getUUID().toString().c_str());
+        //     } else {
+        //         pClient->disconnect();
+        //         return false;
+        //     }
 
-            if (pChr->canRead()) {
-                Serial.printf("The value of: %s is now: %s\n", pChr->getUUID().toString().c_str(), pChr->readValue().c_str());
-            }
-        }
+        //     if (pChr->canRead()) {
+        //         Serial.printf("The value of: %s is now: %s\n", pChr->getUUID().toString().c_str(), pChr->readValue().c_str());
+        //     }
+        // }
 
         if (pChr->canNotify()) {
             if (!pChr->subscribe(true, notifyCB)) {
