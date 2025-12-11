@@ -3,7 +3,8 @@
 static const NimBLEAdvertisedDevice* advDevice;
 static bool                          doConnect  = false;
 static bool                          connected  = false;
-static uint32_t                      scanTimeMs = 5000; // Scan duration in milliseconds 0 = forever
+static uint32_t                     #define DEBUG
+ scanTimeMs = 5000; // Scan duration in milliseconds 0 = forever
 
 #define UUID_NOBUMP_SERVICE      "12345678-0001-0000-0000-000000000001"
 #define UUID_DOORSTATE_CHAR      "12345678-0001-0000-0000-000000000002"
