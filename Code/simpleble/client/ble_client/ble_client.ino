@@ -3,11 +3,22 @@
 static const NimBLEAdvertisedDevice* advDevice;
 static bool                          doConnect  = false;
 static bool                          connected  = false;
-static uint32_t                     #define DEBUG
- scanTimeMs = 5000; // Scan duration in milliseconds 0 = forever
+static uint32_t                      scanTimeMs = 5000; // Scan duration in milliseconds 0 = forever
 
-#define UUID_NOBUMP_SERVICE      "12345678-0001-0000-0000-000000000001"
-#define UUID_DOORSTATE_CHAR      "12345678-0001-0000-0000-000000000002"
+
+#define DEBUG
+#define UUID_NOBUMP_SERVICE      "AFFE"
+#define UUID_DOORSTATE_CHAR      "BEEF"
+#define D1 1
+#define D2 2
+#define D7 17
+#define D8 19
+
+enum class DoorState{
+  OPEN,
+  CLOSED,
+  ERROR
+};
 
 
 class ClientCallbacks : public NimBLEClientCallbacks {
@@ -62,6 +73,19 @@ void notifyCB(NimBLERemoteCharacteristic* pRemoteCharacteristic, uint8_t* pData,
     str             += ", Value = " + std::string((char*)pData, length);
     Serial.printf("%s\n", str.c_str());
     #endif
+    if (length < 1) {
+        #ifdef DEBUG
+        Serial.printf("Received data length is less than 1, ignoring\n");
+        #endif
+        return;
+    }
+    std::string value = std::string((char*)pData, length);
+    #ifdef DEBUG
+    Serial.printf("Received State is ");
+    Serial.printf(value.c_str());
+    #endif
+    DoorState receivedState = value == "OPEN" ? DoorState::OPEN : (value == "CLOSED" ? DoorState::CLOSED : DoorState::ERROR);
+    toggleLEDsFromDoorState(receivedState);
 }
 bool connectToServer() {
     NimBLEClient* pClient = nullptr;
@@ -121,7 +145,7 @@ bool connectToServer() {
 
     pSvc = pClient->getService(UUID_NOBUMP_SERVICE);
     if (pSvc) {
-        pChr = pSvc->getCharacteristic(UUID_NOBUMP_CHARACTERISTIC);
+        pChr = pSvc->getCharacteristic(UUID_DOORSTATE_CHAR );
     }
         if (pChr) {
         if (pChr->canNotify()) {
@@ -147,6 +171,30 @@ bool connectToServer() {
     return true;
 }
 
+void toggleLEDsFromDoorState(DoorState state)
+{
+  if (state == DoorState::OPEN)
+  {
+    #ifdef DEBUG
+    Serial.printf("Turning LEDs On");
+    #endif
+    digitalWrite(D8, HIGH);
+    digitalWrite(D1, HIGH);
+    digitalWrite(D2, HIGH);
+    digitalWrite(D7, HIGH);
+  }
+  else if (state == DoorState::CLOSED)
+  {
+    #ifdef DEBUG
+    Serial.printf("Turning LEDs Off");
+    #endif
+    digitalWrite(D8, LOW);
+    digitalWrite(D1, LOW);
+    digitalWrite(D2, LOW);
+    digitalWrite(D7, LOW);
+  }
+}
+
 void setup() {
     #ifdef DEBUG
     Serial.begin(115200);
@@ -164,6 +212,15 @@ void setup() {
     #ifdef DEBUG
     Serial.printf("Scanning for peripherals\n");
     #endif
+
+    // Pins der LEDs als Output setzen
+    pinMode(D8, OUTPUT);
+    pinMode(D1, OUTPUT);
+    pinMode(D2, OUTPUT);
+    pinMode(D7, OUTPUT);
+
+    // Pin für Spannungsmessung als Input setzen
+    //pinMode(A0, INPUT);
 }
 
 void loop() {

@@ -2,8 +2,8 @@
 #include <NewPing.h>
 //Er schreibt auf die Characteristic, deswegen ist das der Sender -> Misst den Doorstate
 
-#define UUID_NOBUMP_SERVICE      "12345678-0001-0000-0000-000000000001"
-#define UUID_DOORSTATE_CHAR      "12345678-0001-0000-0000-000000000002"
+#define UUID_NOBUMP_SERVICE      "AFFE"
+#define UUID_DOORSTATE_CHAR      "BEEF"
 #define TRIG_PIN 19
 #define ECHO_PIN 17
 #define MAX_DISTANCE 200
