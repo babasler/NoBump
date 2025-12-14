@@ -81,7 +81,7 @@ void setup(void) {
 }
 
 void loop() {
-delay(2000);
+delay(400);
 
 //Distanz messen
 uint32_t distance = sonar.ping_cm();
