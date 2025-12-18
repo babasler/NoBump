@@ -14,21 +14,15 @@ const char* mqtt_topic = "noBump/battery";
 WiFiClient espClient;
 PubSubClient client(espClient);
 
-
-constexpr char UUID_NOBUMP_SERVICE[] = "AFFE";
-constexpr char UUID_DOORSTATE_CHAR[] = "BEEF";
+const NimBLEUUID UUID_NOBUMP_SERVICE("AFFE");
+const NimBLEUUID UUID_DOORSTATE_CHAR("BEEF");
 
 #define D1 1
 #define D2 2
 #define D7 17
 #define D8 19
-#define CONFIG_BT_NIMBLE_ROLE_BROADCASTER_DISABLED
-#define CONFIG_BT_NIMBLE_ROLE_OBSERVER_DISABLED
-#define CONFIG_BT_NIMBLE_MAX_CONNECTIONS 1
-#define CONFIG_BT_NIMBLE_MAX_CCCDS 1
-#define CONFIG_BT_NIMBLE_MAX_SERVICES 1
-#define CONFIG_BT_NIMBLE_MAX_CHARACTERISTICS 1
-#define CONFIG_BT_NIMBLE_ATT_PREFERRED_MTU 23
+#define DEBUG
+
 
 #ifdef DEBUG
 #define DBG(x) Serial.println(x)
@@ -196,7 +190,6 @@ void setup() {
 
   NimBLEDevice::setPower(3);
   NimBLEScan* pScan = NimBLEDevice::getScan();
-  pScan->setScanCallbacks(&scanCallbacks, false);
   pScan->setInterval(100);
   pScan->setWindow(100);
   pScan->setActiveScan(false);

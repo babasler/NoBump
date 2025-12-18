@@ -1,7 +1,8 @@
 #include <NimBLEDevice.h>
+#include <NewPing.h>
 #include <PubSubClient.h>
 #include <WiFi.h>
-#include "secret.h"
+#include <secret.h>
 
 
 static const NimBLEAdvertisedDevice* advDevice;
@@ -35,10 +36,10 @@ void notifyCB(NimBLERemoteCharacteristic* pRemoteCharacteristic, uint8_t* pData,
   }
   if (length == 4 && memcmp(pData, "OPEN", 4) == 0) {
     toggleLEDsFromDoorState(DoorState::OPEN);
-    mqttPublishBattery();
   } else if (length == 6 && memcmp(pData, "CLOSED", 6) == 0) {
     toggleLEDsFromDoorState(DoorState::CLOSED);
   }
+  mqttPublishBattery();
 }
 bool connectToServer() {
   NimBLEClient* pClient = nullptr;
@@ -90,11 +91,6 @@ bool connectToServer() {
 }
 
 void mqttPublishBattery() {
-  // 1. Akku messen (Beispiel: ADC-Pin)
-  //uint8_t percentage;
-  //float vBat;
-  //vBat = getVbatt();
-  //percentage = mapFloat(vBat, minVoltage, maxVoltage);
   WiFi.begin(ssid, password);
 
   unsigned long start = millis();
@@ -119,7 +115,6 @@ void mqttPublishBattery() {
   WiFi.disconnect(true);
   WiFi.mode(WIFI_OFF);
 }
-
 
 void toggleLEDsFromDoorState(DoorState state) {
   for (uint8_t i = 0; i < 4; i++) digitalWrite(ledPins[i], state == DoorState::OPEN ? HIGH : LOW);
@@ -147,6 +142,7 @@ void setup() {
 }
 
 void loop() {
+  mqttPublishBattery();
   delay(10);
 
   if (doConnect) {

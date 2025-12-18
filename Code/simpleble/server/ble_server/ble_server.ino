@@ -1,14 +1,23 @@
 #include <NimBLEDevice.h>
 #include <NewPing.h>
+#include <PubSubClient.h>
+#include <WiFi.h>
+#include <secret.h>
 //Er schreibt auf die Characteristic, deswegen ist das der Sender -> Misst den Doorstate
 
 #define UUID_NOBUMP_SERVICE      "AFFE"
 #define UUID_DOORSTATE_CHAR      "BEEF"
+#define UUID_BATTERY_LEVEL_CHAR  
 #define TRIG_PIN 19
 #define ECHO_PIN 17
 #define MAX_DISTANCE 200
 #define DOOR_CLOSED_THREASH 4
-#define DEBUG
+
+#ifdef DEBUG
+#define DBG(x) Serial.println(x)
+#else
+#define DBG(x) do {} while (0)
+#endif
 
 static NimBLEServer* pServer;
 NewPing sonar(TRIG_PIN, ECHO_PIN, MAX_DISTANCE);
@@ -26,16 +35,11 @@ DoorState currentState;
 
 class ServerCallbacks : public NimBLEServerCallbacks {
     void onConnect(NimBLEServer* pServer, NimBLEConnInfo& connInfo) override {
-        #ifdef DEBUG
-        Serial.printf("Client address: %s\n", connInfo.getAddress().toString().c_str());
-        #endif
         pServer->updateConnParams(connInfo.getConnHandle(), 24, 48, 0, 180);
     }
 
     void onDisconnect(NimBLEServer* pServer, NimBLEConnInfo& connInfo, int reason) override {
-        #ifdef DEBUG
-        Serial.printf("Client disconnected - start advertising\n");
-        #endif
+        DBG("Client disconnected - start advertising\n");
         NimBLEDevice::startAdvertising();
     }
 } serverCallbacks;
@@ -48,15 +52,39 @@ DoorState getStateFromDistance(uint32_t distance){
     return DoorState::CLOSED;
   }
   else{
-    return DoorState::OPEN; //default fallback
+    return DoorState::OPEN;
+}
+}
+
+void mqttPublishBattery(uint8_t battery_level) {
+  WiFi.begin(ssid, password);
+
+  unsigned long start = millis();
+  while (WiFi.status() != WL_CONNECTED && millis() - start < 5000) {
+    delay(100);
   }
+
+  static WiFiClient espClient;
+  static PubSubClient client(espClient);
+
+  if (WiFi.status() != WL_CONNECTED) return;  // Verbindung fehlgeschlagen
+
+  client.setServer("neptune4", 1883);
+
+  if (client.connect("c6")) {
+    char buf[4];
+    itoa(50, buf, 10);
+    client.publish("noBump/battery", buf, true);
+    client.disconnect();
+  }
+
+  WiFi.disconnect(true);
+  WiFi.mode(WIFI_OFF);
 }
 
 void setup(void) {
-    #ifdef DEBUG
     Serial.begin(115200);
-    Serial.printf("Starting NoBump Server\n");
-    #endif
+    DBG("Starting NoBump Server\n");
 
     NimBLEDevice::init("NoBump");
 
@@ -75,9 +103,7 @@ void setup(void) {
     pAdvertising->addServiceUUID(pDeadService->getUUID());
     pAdvertising->enableScanResponse(false);
     pAdvertising->start();
-    #ifdef DEBUG
-    Serial.printf("Advertising Started\n");
-    #endif
+    DBG("Advertising Started\n");
 }
 
 void loop() {
@@ -87,9 +113,7 @@ delay(400);
 uint32_t distance = sonar.ping_cm();
   
 if(distance == 0){
-    #ifdef DEBUG
-    Serial.println("Fehler bei der Distanzmessung");
-    #endif
+    DBG("Fehler bei der Distanzmessung");
     delay(1000);
     return;
 }
@@ -97,18 +121,13 @@ if(distance == 0){
   //nur wenn sich der zustand geändert hat, nachricht verpacken und senden
 DoorState newState = getStateFromDistance(distance);
 if(newState == currentState){
-    #ifdef DEBUG
-    Serial.println("Zustand unverändert, sende keine Nachricht.");
-    #endif
+    DBG("Zustand unverändert, sende keine Nachricht.");
     delay(1000);
     return;
   }
 
 currentState = newState;
-#ifdef DEBUG
-Serial.print("Gemessene Distanz: "); Serial.print(distance); Serial.print(" cm, neuer Zustand: ");
-Serial.println(currentState == DoorState::OPEN ? "OPEN" : (currentState == DoorState::CLOSED ? "CLOSED" : "ERROR"));
-#endif
+DBG(currentState == DoorState::OPEN ? "OPEN" : (currentState == DoorState::CLOSED ? "CLOSED" : "ERROR"));
 
 if (pServer->getConnectedCount()) {
     NimBLEService* pSvc = pServer->getServiceByUUID(UUID_NOBUMP_SERVICE);
