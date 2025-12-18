@@ -5,3 +5,4 @@ Code/.DS_Store
 **/.DS_Store
 Code/receiver/secret.h
 Code/receiver_ble/secret.h
+Code/simpleble/server/ble_server/secret.h
