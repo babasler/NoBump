@@ -142,7 +142,6 @@ void setup() {
 }
 
 void loop() {
-  mqttPublishBattery();
   delay(10);
 
   if (doConnect) {

@@ -1,8 +1,5 @@
 #include <NimBLEDevice.h>
 #include <NewPing.h>
-#include <PubSubClient.h>
-#include <WiFi.h>
-#include <secret.h>
 //Er schreibt auf die Characteristic, deswegen ist das der Sender -> Misst den Doorstate
 
 #define UUID_NOBUMP_SERVICE      "AFFE"
@@ -12,6 +9,7 @@
 #define ECHO_PIN 17
 #define MAX_DISTANCE 200
 #define DOOR_CLOSED_THREASH 4
+#define DEBUG
 
 #ifdef DEBUG
 #define DBG(x) Serial.println(x)
@@ -54,32 +52,6 @@ DoorState getStateFromDistance(uint32_t distance){
   else{
     return DoorState::OPEN;
 }
-}
-
-void mqttPublishBattery(uint8_t battery_level) {
-  WiFi.begin(ssid, password);
-
-  unsigned long start = millis();
-  while (WiFi.status() != WL_CONNECTED && millis() - start < 5000) {
-    delay(100);
-  }
-
-  static WiFiClient espClient;
-  static PubSubClient client(espClient);
-
-  if (WiFi.status() != WL_CONNECTED) return;  // Verbindung fehlgeschlagen
-
-  client.setServer("neptune4", 1883);
-
-  if (client.connect("c6")) {
-    char buf[4];
-    itoa(50, buf, 10);
-    client.publish("noBump/battery", buf, true);
-    client.disconnect();
-  }
-
-  WiFi.disconnect(true);
-  WiFi.mode(WIFI_OFF);
 }
 
 void setup(void) {
