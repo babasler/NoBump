@@ -93,7 +93,7 @@ bool connectToServer() {
       return false;
     }
     pClient = NimBLEDevice::createClient();
-    pClient->setConnectionParams(12, 12, 0, 150);
+    pClient->setConnectionParams(80, 160, 4, 400);//nicht so aggressiv
     pClient->setConnectTimeout(5 * 1000);
     if (!pClient->connect(advDevice)) {
       NimBLEDevice::deleteClient(pClient);
@@ -131,7 +131,7 @@ void sendBatteryTask(void *parameter) {
   PubSubClient* mqttClient = params->mqttClient;
   mqttClient->setServer("neptune4", 1883);
   for (;;) {
-    vTaskDelay(pdMS_TO_TICKS(5 * 60 * 1000)); // 5 Minuten warten
+    vTaskDelay(pdMS_TO_TICKS(10 * 60 * 1000)); // 10 Minuten warten
     DBG("Waking up");
      if (!doorStateProcessing) {  // nur wenn keine DoorState-Bearbeitung läuft
       WiFi.mode(WIFI_STA);
@@ -214,7 +214,7 @@ void setup() {
   Serial.begin(115200);
   DBG("Starte jetzt");
 
-  NimBLEDevice::setPower(3);
+  NimBLEDevice::setPower(0);
   esp_sleep_enable_bt_wakeup();
   NimBLEScan* pScan = NimBLEDevice::getScan();
   pScan->setScanCallbacks(&scanCallbacks, false);
