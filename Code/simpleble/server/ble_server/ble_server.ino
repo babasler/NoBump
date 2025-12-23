@@ -9,7 +9,8 @@
 #define ECHO_PIN 17
 #define MAX_DISTANCE 200
 #define DOOR_CLOSED_THREASH 4
-#define DEBUG
+#define configUSE_TICKLESS_IDLE 1
+
 
 #ifdef DEBUG
 #define DBG(x) Serial.println(x)
@@ -79,14 +80,14 @@ void setup(void) {
 }
 
 void loop() {
-delay(400);
+vTaskDelay(pdMS_TO_TICKS(300)); //0,3s
 
 //Distanz messen
 uint32_t distance = sonar.ping_cm();
   
 if(distance == 0){
     DBG("Fehler bei der Distanzmessung");
-    delay(1000);
+    vTaskDelay(pdMS_TO_TICKS(800)); //0,8s
     return;
 }
 
@@ -94,7 +95,7 @@ if(distance == 0){
 DoorState newState = getStateFromDistance(distance);
 if(newState == currentState){
     DBG("Zustand unverändert, sende keine Nachricht.");
-    delay(1000);
+    vTaskDelay(pdMS_TO_TICKS(800)); //0,8s
     return;
   }
 
