@@ -13,6 +13,7 @@ bool connectToServer();
 static const NimBLEAdvertisedDevice* advDevice;
 TaskHandle_t wifiTaskHandle = NULL;
 TaskHandle_t BLEConnectTaskHandle = NULL;
+TaskHandle_t doorTaskHandle = NULL;
 static uint32_t scanTimeMs = 5000;  // Scan duration in milliseconds 0 = forever
 
 static NimBLEUUID UUID_NOBUMP_SERVICE("AFFE");
@@ -39,6 +40,13 @@ enum DoorState : uint8_t {
   CLOSED
 };
 
+static portMUX_TYPE doorStateMux = portMUX_INITIALIZER_UNLOCKED;
+static volatile bool doorStatePending = false;
+static volatile DoorState pendingDoorState = DoorState::CLOSED;
+
+void toggleLEDsFromDoorState(DoorState state);
+static void doorStateTask(void* parameter);
+
 struct TaskParams {
   PubSubClient* mqttClient;
 };
@@ -62,10 +70,22 @@ void notifyCB(NimBLERemoteCharacteristic* pRemoteCharacteristic, uint8_t* pData,
   }
   if (length == 4 && memcmp(pData, "OPEN", 4) == 0) {
     DBG("Revieved Open State");
-    toggleLEDsFromDoorState(DoorState::OPEN);
+    portENTER_CRITICAL(&doorStateMux);
+    pendingDoorState = DoorState::OPEN;
+    doorStatePending = true;
+    portEXIT_CRITICAL(&doorStateMux);
+    if (doorTaskHandle != NULL) {
+      xTaskNotifyGive(doorTaskHandle);
+    }
   } else if (length == 6 && memcmp(pData, "CLOSED", 6) == 0) {
     DBG("Revieved Closed State");
-    toggleLEDsFromDoorState(DoorState::CLOSED);
+    portENTER_CRITICAL(&doorStateMux);
+    pendingDoorState = DoorState::CLOSED;
+    doorStatePending = true;
+    portEXIT_CRITICAL(&doorStateMux);
+    if (doorTaskHandle != NULL) {
+      xTaskNotifyGive(doorTaskHandle);
+    }
   }
 }
 class ClientCallbacks : public NimBLEClientCallbacks {
@@ -131,7 +151,7 @@ void sendBatteryTask(void *parameter) {
   PubSubClient* mqttClient = params->mqttClient;
   mqttClient->setServer("neptune4", 1883);
   for (;;) {
-    vTaskDelay(pdMS_TO_TICKS(10 * 60 * 1000)); // 10 Minuten warten
+    vTaskDelay(pdMS_TO_TICKS(30 * 60 * 1000)); // 10 Minuten warten
     DBG("Waking up");
      if (!doorStateProcessing) {  // nur wenn keine DoorState-Bearbeitung läuft
       WiFi.mode(WIFI_STA);
@@ -174,6 +194,26 @@ void BLEConnectTask(void* parameter) {
         }
         vTaskDelay(pdMS_TO_TICKS(100)); // sleep-freundlich
     }
+}
+
+static void doorStateTask(void* parameter) {
+  (void)parameter;
+  for (;;) {
+    // Blockiert bis ein Notify kommt (kein Polling)
+    ulTaskNotifyTake(pdTRUE, portMAX_DELAY);
+
+    DoorState state;
+    bool hasState;
+    portENTER_CRITICAL(&doorStateMux);
+    state = pendingDoorState;
+    hasState = doorStatePending;
+    doorStatePending = false;
+    portEXIT_CRITICAL(&doorStateMux);
+
+    if (hasState) {
+      toggleLEDsFromDoorState(state);
+    }
+  }
 }
 
 
@@ -239,6 +279,9 @@ void setup() {
   &BLEConnectTaskHandle,0);
 
   for (uint8_t i = 0; i < 4; i++) pinMode(ledPins[i], OUTPUT);
+
+  // Task, der auf BLE-Notifies wartet und dann die LEDs setzt.
+  xTaskCreatePinnedToCore(doorStateTask, "DoorTask", 2048, NULL, 1, &doorTaskHandle, 1);
 
   // Pin für Spannungsmessung als Input setzen
   pinMode(A0, INPUT);
